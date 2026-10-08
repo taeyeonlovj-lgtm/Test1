@@ -1,0 +1,4 @@
+# The Dockerfile clones the Mattermost source itself; do not send local files,
+# including .env credentials, Git history, or persisted volumes, into the build context.
+**
+!Dockerfile.mattermost-source

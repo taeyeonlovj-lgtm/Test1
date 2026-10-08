@@ -1,0 +1,95 @@
+# syntax=docker/dockerfile:1
+
+# Keep these versions aligned with server/.go-version and .nvmrc in the source repo.
+ARG MATTERMOST_GO_VERSION=1.26.7
+FROM golang:${MATTERMOST_GO_VERSION}-bookworm AS mattermost-build
+
+ARG MATTERMOST_NODE_VERSION=24.11.1
+ARG MATTERMOST_SOURCE_REPOSITORY=https://github.com/taeyeonlovj-lgtm/mattermost_RE.git
+ARG MATTERMOST_SOURCE_REF=master
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        apt-transport-https \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        jq \
+        make \
+        pgloader \
+        software-properties-common \
+        xmlsec1 \
+        zip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install the Node.js version used by this Mattermost source revision.
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash \
+    && bash -c "source /root/.nvm/nvm.sh && nvm install ${MATTERMOST_NODE_VERSION} && nvm use ${MATTERMOST_NODE_VERSION} && nvm alias default ${MATTERMOST_NODE_VERSION}"
+ENV PATH="/root/.nvm/versions/node/v${MATTERMOST_NODE_VERSION}/bin:${PATH}"
+
+WORKDIR /mattermost
+RUN git init \
+    && git remote add origin "${MATTERMOST_SOURCE_REPOSITORY}" \
+    && git fetch --no-tags --depth=1 origin "${MATTERMOST_SOURCE_REF}" \
+    && git checkout --detach FETCH_HEAD \
+    && git config --global --add safe.directory /mattermost
+
+# Build the web app and server for the target Docker architecture, then
+# package them using the Mattermost repository's own release targets. The
+# public repository builds Team Edition. The upstream amd64 package target
+# includes its prepackaged plugins; the arm64 target omits them.
+ARG TARGETARCH
+WORKDIR /mattermost/server
+RUN make build-client \
+    && case "${TARGETARCH}" in \
+        amd64) make build-linux-amd64 && make package-linux-amd64 ;; \
+        arm64) make build-linux-arm64 && make package-linux-arm64 ;; \
+        *) echo "Unsupported Docker architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac
+
+RUN if [ "${TARGETARCH}" = "arm64" ]; then \
+        package=dist/mattermost-team-linux-arm64.tar.gz; \
+    else \
+        package=dist/mattermost-team-linux-amd64.tar.gz; \
+    fi \
+    && mkdir -p /tmp/mattermost-package \
+    && tar -xzf "${package}" -C /tmp/mattermost-package
+
+# The runtime image uses Ubuntu to keep the document-preview dependencies
+# available while running Mattermost as its normal non-root user (UID 2000).
+FROM ubuntu:noble AS mattermost-runtime
+
+ENV PATH="/mattermost/bin:${PATH}" \
+    MM_SERVICESETTINGS_ENABLELOCALMODE="true" \
+    MM_INSTALL_TYPE="docker"
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+        ca-certificates \
+        mailcap \
+        media-types \
+        poppler-utils \
+        tidy \
+        tzdata \
+        unrtf \
+        wv \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 2000 mattermost \
+    && useradd --uid 2000 --gid 2000 --comment "" --home-dir /mattermost --shell /usr/sbin/nologin mattermost \
+    && mkdir -p /mattermost/data /mattermost/plugins /mattermost/client/plugins /mattermost/.postgresql \
+    && chmod 700 /mattermost/.postgresql
+
+COPY --from=mattermost-build --chown=2000:2000 /tmp/mattermost-package/mattermost/ /mattermost/
+
+USER mattermost
+WORKDIR /mattermost
+
+HEALTHCHECK --interval=30s --timeout=10s \
+    CMD ["/mattermost/bin/mmctl", "system", "status", "--local"]
+
+EXPOSE 8065 8067 8074
+VOLUME ["/mattermost/data", "/mattermost/logs", "/mattermost/config", "/mattermost/plugins", "/mattermost/client/plugins"]
+
+CMD ["/mattermost/bin/mattermost"]
