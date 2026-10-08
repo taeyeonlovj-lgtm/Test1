@@ -12,6 +12,8 @@ Refer to the [Mattermost Docker deployment guide](https://docs.mattermost.com/de
 
 To build and run the source repository [taeyeonlovj-lgtm/mattermost_RE](https://github.com/taeyeonlovj-lgtm/mattermost_RE), use the source override file. The Git URL is source code, not a container image; the override builds a local image from the selected Git ref before starting Mattermost. Copy `env.example` to `.env` (or add the source-build variables to your existing `.env`); the defaults point to this repository's `master` branch.
 
+The base Compose file publishes `8065:8065` directly. Set `MM_SERVICESETTINGS_SITEURL` in `.env` to `http://<server-ip>:8065` for a plain-HTTP setup. When using Nginx, note that this mapping also exposes Mattermost directly and bypasses the HTTPS proxy; restrict that port at the firewall if needed.
+
 Without Nginx:
 
 ```sh
@@ -33,17 +35,6 @@ docker compose -f docker-compose.yml -f docker-compose.fork.yml build --no-cache
 Then rerun the `up` command above for your Nginx or non-Nginx setup.
 
 The build uses the Go and Node versions set by `MATTERMOST_GO_VERSION` and `MATTERMOST_NODE_VERSION`; update these to match `server/.go-version` and `.nvmrc` for the selected source revision. Building Mattermost from source takes substantially longer than pulling a published image and requires network access for Go, npm, and prepackaged plugins. The public source build produces Team Edition; Enterprise features require the separate Enterprise source. Back up the database and Mattermost data before switching an existing instance to a different source revision, since startup can apply database migrations.
-
-### Using a prebuilt custom Mattermost image
-
-If you publish a custom Mattermost server image to a registry, set its repository and tag in `.env`:
-
-```env
-MATTERMOST_IMAGE_REPOSITORY=ghcr.io/your-org/mattermost-custom
-MATTERMOST_IMAGE_TAG=your-tag
-```
-
-`MATTERMOST_IMAGE_REPOSITORY` is the image name without its tag. Leave it empty to use the official image selected by `MATTERMOST_IMAGE`. Authenticate on the Docker host first if the image is in a private registry.
 
 ## Contribute
 PRs are welcome, refer to our [contributing guide](https://developers.mattermost.com/contribute/getting-started/) for an overview of the Mattermost contribution process.
