@@ -1,0 +1,11 @@
+services:
+  mattermost:
+    image: "${MATTERMOST_SOURCE_IMAGE:-mattermost-fork}:${MATTERMOST_SOURCE_TAG:-local}"
+    build:
+      context: .
+      dockerfile: Dockerfile.mattermost-source
+      args:
+        MATTERMOST_GO_VERSION: "${MATTERMOST_GO_VERSION:-1.26.7}"
+        MATTERMOST_NODE_VERSION: "${MATTERMOST_NODE_VERSION:-24.11.1}"
+        MATTERMOST_SOURCE_REPOSITORY: "${MATTERMOST_SOURCE_REPOSITORY:-https://github.com/taeyeonlovj-lgtm/mattermost_RE.git}"
+        MATTERMOST_SOURCE_REF: "${MATTERMOST_SOURCE_REF:-master}"

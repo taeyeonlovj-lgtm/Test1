@@ -26,6 +26,8 @@ services:
   mattermost:
     depends_on:
       - postgres
+    ports:
+      - "8065:8065"
     image: mattermost/${MATTERMOST_IMAGE}:${MATTERMOST_IMAGE_TAG}
     restart: ${RESTART_POLICY}
     security_opt:
